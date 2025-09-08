@@ -3,7 +3,7 @@ import streamlit as st
 import re
 from html import escape
 
-st.set_page_config(page_title="Validador de Transações — Derivação Total (corrigido)", layout="centered")
+st.set_page_config(page_title="Validador de Transações", layout="centered")
 
 VALID_COLOR = "teal"
 ERROR_COLOR = "crimson"
@@ -15,7 +15,7 @@ PATTERNS = {
         r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])"
         r"T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)Z$"
     ),
-    'TRANSACAO': re.compile(r'^TRX\d{3}$'),
+    'TRANSACAO': re.compile(r'^trx\d{3}$'),
     'OPERACAO': re.compile(r'^(debito|credito)$', re.IGNORECASE),
     'CONTA': re.compile(r'^conta:\d{3}$', re.IGNORECASE),
     'VALOR': re.compile(r'^\d+\.\d{2}$'),
@@ -157,9 +157,9 @@ def validar_com_passos(linha):
     return passos, erros
 
 
-st.title("Validador de Transações — Derivação Total (corrigido)")
+st.title("Validador de Transações — Derivação Total")
 st.write("Formato: `DATA_HORA | TRANSACAO | OPERACAO | CONTA_ORIGEM | CONTA_DESTINO | VALOR | MOEDA`")
-st.write("Ex.: `2025-09-07T14:35:02Z | TRX123 | debito | conta:001 | conta:999 | 1500.00 | brl`")
+st.write("Ex.: `2025-09-07T14:35:02Z | trx123 | debito | conta:001 | conta:999 | 1500.00 | brl`")
 
 linha = st.text_input("Linha de transação:", value=st.session_state.get("ultima_linha", ""))
 
