@@ -5,16 +5,11 @@ from html import escape
 
 st.set_page_config(page_title="Validador de Transações — Derivação Total (corrigido)", layout="centered")
 
-# -------------------------
-# Cores / constantes
-# -------------------------
 VALID_COLOR = "teal"
 ERROR_COLOR = "crimson"
 SEP_COLOR = "gray"
 
-# -------------------------
-# Regex para validação dos tokens
-# -------------------------
+
 PATTERNS = {
     'DATA_HORA': re.compile(
         r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])"
@@ -37,9 +32,7 @@ ORDEM = [
     "MOEDA"
 ]
 
-# -------------------------
-# Tokenizer
-# -------------------------
+
 def tokenize_linha(linha):
     partes = [p.strip() for p in linha.strip().split("|")]
     if len(partes) != 7:
@@ -57,9 +50,7 @@ def tokenize_linha(linha):
             erros.append((nome, parte))
     return tokens, erros
 
-# -------------------------
-# Helpers de coloração / escape
-# -------------------------
+
 def q_val(val, nome, erros):
     color = ERROR_COLOR if (nome, val) in erros else VALID_COLOR
     return f'<span style="font-family:monospace;color:{color}">"{escape(val)}"</span>'
@@ -68,9 +59,7 @@ def q_char(ch, nome, valor, erros):
     color = ERROR_COLOR if (nome, valor) in erros else VALID_COLOR
     return f'<span style="font-family:monospace;color:{color}">"{escape(ch)}"</span>'
 
-# -------------------------
-# Expansões detalhadas (retornam lista de linhas HTML)
-# -------------------------
+
 def expandir_campo_html(nome, valor, erros):
     lines = []
     if nome == "DATA_HORA":
@@ -122,9 +111,7 @@ def expandir_campo_html(nome, valor, erros):
         lines.append(" ".join(q_char(ch, nome, valor, erros) for ch in (valor or "")))
     return lines
 
-# -------------------------
-# Geração da derivação (progressiva + detalhada)
-# -------------------------
+
 def gerar_derivacao_html(tokens, erros):
     # símbolos iniciais (pipes são literais)
     symbols = [
@@ -161,9 +148,7 @@ def gerar_derivacao_html(tokens, erros):
 
     return passos
 
-# -------------------------
-# Validação principal
-# -------------------------
+
 def validar_com_passos(linha):
     tokens, erros = tokenize_linha(linha)
     if tokens is None:
@@ -171,9 +156,7 @@ def validar_com_passos(linha):
     passos = gerar_derivacao_html(tokens, erros)
     return passos, erros
 
-# -------------------------
-# UI Streamlit
-# -------------------------
+
 st.title("Validador de Transações — Derivação Total (corrigido)")
 st.write("Formato: `DATA_HORA | TRANSACAO | OPERACAO | CONTA_ORIGEM | CONTA_DESTINO | VALOR | MOEDA`")
 st.write("Ex.: `2025-09-07T14:35:02Z | TRX123 | debito | conta:001 | conta:999 | 1500.00 | brl`")
