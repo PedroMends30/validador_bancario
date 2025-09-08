@@ -19,7 +19,7 @@ PATTERNS = {
     'OPERACAO': re.compile(r'^(debito|credito)$', re.IGNORECASE),
     'CONTA': re.compile(r'^conta:\d{3}$', re.IGNORECASE),
     'VALOR': re.compile(r'^\d+\.\d{2}$'),
-    'MOEDA': re.compile(r'^[a-z]{3}$', re.IGNORECASE),
+    'MOEDA': re.compile(r'^(usd|brl|eur)$', re.IGNORECASE),
 }
 
 ORDEM = [
