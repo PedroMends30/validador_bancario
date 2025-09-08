@@ -3,104 +3,161 @@ import streamlit as st
 import re
 from html import escape
 
-st.set_page_config(page_title="Validador de Transações — Passo a passo", layout="centered")
+st.set_page_config(page_title="Validador de Transações — Derivação Total (corrigido)", layout="centered")
 
 # -------------------------
-# PADRÕES (igual ao seu)
+# Cores / constantes
+# -------------------------
+VALID_COLOR = "teal"
+ERROR_COLOR = "crimson"
+SEP_COLOR = "gray"
+
+# -------------------------
+# Regex para validação dos tokens
 # -------------------------
 PATTERNS = {
-    'DATA': re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'),
-    'ID': re.compile(r'^TRX\d+$'),
-    'TIPO': re.compile(r'^(CRED|DEB)ITO$', re.IGNORECASE),
-    'CONTA': re.compile(r'^CONTA:\d+$'),
-    'VALOR': re.compile(r'^\d+(\.\d{2})?$'),
-    'MOEDA': re.compile(r'^[A-Z]{3}$'),
+    'DATA_HORA': re.compile(
+        r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])"
+        r"T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)Z$"
+    ),
+    'TRANSACAO': re.compile(r'^TRX\d{3}$'),
+    'OPERACAO': re.compile(r'^(debito|credito)$', re.IGNORECASE),
+    'CONTA': re.compile(r'^conta:\d{3}$', re.IGNORECASE),
+    'VALOR': re.compile(r'^\d+\.\d{2}$'),
+    'MOEDA': re.compile(r'^[a-z]{3}$', re.IGNORECASE),
 }
 
+ORDEM = [
+    "DATA_HORA",
+    "TRANSACAO",
+    "OPERACAO",
+    "CONTA_ORIGEM",
+    "CONTA_DESTINO",
+    "VALOR",
+    "MOEDA"
+]
+
 # -------------------------
-# Tokenizer (adaptado)
+# Tokenizer
 # -------------------------
 def tokenize_linha(linha):
-    partes = re.split(r'\s*\|\s*', linha.strip())
+    partes = [p.strip() for p in linha.strip().split("|")]
     if len(partes) != 7:
-        return None, [(None, f"Erro sintático: número de campos = {len(partes)} (esperado 7).")]
+        return None, [(None, f"Erro sintático: {len(partes)} campos (esperado 7).")]
 
-    ordem = ['DATA', 'ID', 'TIPO', 'CONTA', 'CONTA', 'VALOR', 'MOEDA']
     tokens = []
     erros = []
-    for nome, parte in zip(ordem, partes):
-        padrao = PATTERNS[nome]
+    for nome, parte in zip(ORDEM, partes):
+        base = nome if not nome.startswith("CONTA") else "CONTA"
+        padrao = PATTERNS[base]
         if padrao.match(parte):
-            if nome == 'TIPO':
-                parte_norm = parte.upper()
-                parte_norm = parte_norm.replace('DEBITO', 'DÉBITO').replace('CREDITO', 'CRÉDITO')
-                tokens.append((nome, parte_norm))
-            else:
-                tokens.append((nome, parte))
+            tokens.append((nome, parte))
         else:
             tokens.append((nome, parte))
             erros.append((nome, parte))
     return tokens, erros
 
 # -------------------------
-# Geração dos passos em HTML (cores via CSS inline)
+# Helpers de coloração / escape
+# -------------------------
+def q_val(val, nome, erros):
+    color = ERROR_COLOR if (nome, val) in erros else VALID_COLOR
+    return f'<span style="font-family:monospace;color:{color}">"{escape(val)}"</span>'
+
+def q_char(ch, nome, valor, erros):
+    color = ERROR_COLOR if (nome, valor) in erros else VALID_COLOR
+    return f'<span style="font-family:monospace;color:{color}">"{escape(ch)}"</span>'
+
+# -------------------------
+# Expansões detalhadas (retornam lista de linhas HTML)
+# -------------------------
+def expandir_campo_html(nome, valor, erros):
+    lines = []
+    if nome == "DATA_HORA":
+        m = re.match(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z", valor or "")
+        lines.append("&lt;DATA_HORA&gt; → &lt;ANO&gt;-&lt;MES&gt;-&lt;DIA&gt;T&lt;HORA&gt;:&lt;MIN&gt;:&lt;SEG&gt;Z")
+        if not m:
+            lines.append(f'<span style="font-family:monospace;color:{ERROR_COLOR}">Entrada inválida: {escape(str(valor))}</span>')
+            return lines
+        ano, mes, dia, hora, minu, seg = m.groups()
+        lines.append("&lt;ANO&gt; → D D D D")
+        lines.append(" ".join(q_char(d, nome, valor, erros) for d in ano))
+        lines.append("&lt;MES&gt; → 0N | 10 | 11 | 12")
+        lines.append(" ".join(q_char(d, nome, valor, erros) for d in mes))
+        lines.append("&lt;DIA&gt; → 0N | 1D | 2D | 30 | 31")
+        lines.append(" ".join(q_char(d, nome, valor, erros) for d in dia))
+        lines.append("&lt;HORA&gt; → 0D | 1D | 20 | 21 | 22 | 23")
+        lines.append(" ".join(q_char(d, nome, valor, erros) for d in hora))
+        lines.append("&lt;MIN&gt; → 0D | 1D | 2D | 3D | 4D | 5D")
+        lines.append(" ".join(q_char(d, nome, valor, erros) for d in minu))
+        lines.append("&lt;SEG&gt; → D D")
+        lines.append(" ".join(q_char(d, nome, valor, erros) for d in seg))
+        # mostrar linha completa por caracteres (inclui '-' 'T' ':' 'Z')
+        lines.append("<i>Caracteres:</i> " + " ".join(q_char(ch, nome, valor, erros) for ch in valor))
+    elif nome == "TRANSACAO":
+        lines.append("&lt;TRANSACAO&gt; → TRX D D D")
+        lines.append(" ".join(q_char(ch, nome, valor, erros) for ch in valor))
+    elif nome == "OPERACAO":
+        lines.append("&lt;OPERACAO&gt; → debito | credito")
+        lines.append(" ".join(q_char(ch, nome, valor, erros) for ch in valor))
+    elif "CONTA" in nome:
+        lines.append("&lt;CONTA&gt; → conta : D D D")
+        lines.append(" ".join(q_char(ch, nome, valor, erros) for ch in valor))
+    elif nome == "VALOR":
+        lines.append("&lt;VALOR&gt; → &lt;DIGITOS&gt; . D D")
+        if "." not in (valor or ""):
+            lines.append(f'<span style="font-family:monospace;color:{ERROR_COLOR}">Entrada inválida: {escape(str(valor))}</span>')
+            return lines
+        intp, decp = (valor or "").split(".", 1)
+        lines.append("&lt;DIGITOS&gt; → D | D &lt;DIGITOS&gt;")
+        # mostra parte inteira e decimal como caracteres (o ponto também como terminal)
+        chars = [*(intp), ".", *(decp)]
+        lines.append(" ".join(q_char(ch, nome, valor, erros) for ch in chars))
+    elif nome == "MOEDA":
+        lines.append("&lt;MOEDA&gt; → L L L")
+        lines.append(" ".join(q_char(ch, nome, valor, erros) for ch in valor))
+    else:
+        # fallback: mostrar o valor por caracteres
+        lines.append(f"&lt;{escape(nome)}&gt; → (expansão)")
+        lines.append(" ".join(q_char(ch, nome, valor, erros) for ch in (valor or "")))
+    return lines
+
+# -------------------------
+# Geração da derivação (progressiva + detalhada)
 # -------------------------
 def gerar_derivacao_html(tokens, erros):
-    def ph(text):
-        return f'<span style="font-family:monospace">{escape(text)}</span>'
-
-    valid_color = "teal"    # valor válido (substituições)
-    error_color = "crimson" # valor inválido
-    sep_color = "gray"      # separador
-
-    simbolos = []
-    for i, (nome, _) in enumerate(tokens):
-        if nome == 'DATA':
-            simbolos.append('<Data>')
-        elif nome == 'ID':
-            simbolos.append('<Identificador>')
-        elif nome == 'TIPO':
-            simbolos.append('<Tipo>')
-        elif nome == 'CONTA':
-            simbolos.append('<Conta>')
-        elif nome == 'VALOR':
-            simbolos.append('<Valor>')
-        elif nome == 'MOEDA':
-            simbolos.append('<Moeda>')
-        if i < len(tokens)-1:
-            simbolos.append('SEP')
+    # símbolos iniciais (pipes são literais)
+    symbols = [
+        "<DATA_HORA>", "|", "<TRANSACAO>", "|", "<OPERACAO>", "|",
+        "<CONTA_ORIGEM>", "|", "<CONTA_DESTINO>", "|", "<VALOR>", "|", "<MOEDA>"
+    ]
 
     passos = []
-    passos.append(f"<b>&lt;Registro&gt;</b>")
-    passos.append(f"<b>&lt;Linha&gt;</b>")
-    # passo inicial com símbolos
-    passos.append(' '.join(ph(s) if s != 'SEP' else ph('|') for s in simbolos))
+    passos.append("&lt;S&gt;")
+    # cabeçalho com não-terminais
+    header = " | ".join(["&lt;DATA_HORA&gt;", "&lt;TRANSACAO&gt;", "&lt;OPERACAO&gt;",
+                         "&lt;CONTA_ORIGEM&gt;", "&lt;CONTA_DESTINO&gt;", "&lt;VALOR&gt;", "&lt;MOEDA&gt;"])
+    passos.append(header)
 
-    # valores intercalados (valor, '|', valor, '|', ...)
-    valores = []
-    for i, (_, v) in enumerate(tokens):
-        valores.append(v)
-        if i < len(tokens)-1:
-            valores.append('|')
+    # corrente: inicia com symbol placeholders; pipes substituídos por span visual,
+    corrente = symbols.copy()
+    for i, s in enumerate(corrente):
+        if s == "|":
+            corrente[i] = f'<span style="font-family:monospace;color:{SEP_COLOR}">|</span>'
 
-    corrente = simbolos.copy()
-    idx_val = 0
-    # substitui progressivamente e grava cada passo
-    for i in range(len(corrente)):
-        s = corrente[i]
-        if s.startswith('<') or s == 'SEP':
-            substituto = valores[idx_val]
-            idx_val += 1
-            if substituto == '|':
-                corrente[i] = f'<span style="font-family:monospace;color:{sep_color}">|</span>'
-            else:
-                nome_esperado = tokens[i//2][0]  # mapeia posição
-                # se o par (nome, substituto) estiver em erros -> vermelho
-                if (nome_esperado, substituto) in erros:
-                    corrente[i] = f'<span style="font-family:monospace;color:{error_color}">"{escape(substituto)}"</span>'
-                else:
-                    corrente[i] = f'<span style="font-family:monospace;color:{valid_color}">"{escape(substituto)}"</span>'
-            passos.append(' '.join(corrente))
+    # substituição progressiva: só substitui os não-terminais (0,2,4,...), nunca o '|'
+    nonterminal_positions = [i for i, s in enumerate(symbols) if s != "|"]
+    for pos in nonterminal_positions:
+        token_idx = pos // 2
+        nome, val = tokens[token_idx]
+        corrente[pos] = q_val(val, nome, erros)
+        passos.append(" ".join(corrente))
+
+    # agora, para cada token, adicionar a expansão totalmente detalhada abaixo (não afeta a linha progressiva)
+    for nome, val in tokens:
+        # um separador visual entre blocos
+        passos.append('<div style="height:6px"></div>')
+        passos.extend(expandir_campo_html(nome, val, erros))
 
     return passos
 
@@ -117,50 +174,13 @@ def validar_com_passos(linha):
 # -------------------------
 # UI Streamlit
 # -------------------------
-st.title("Validador de Transações Bancárias")
-st.write("Cole uma linha no formato: `DATA | ID | TIPO | CONTA | CONTA | VALOR | MOEDA`")
-st.write("Exemplos: `2025-09-01T14:23:05Z | TRX123 | DEBITO | CONTA:123 | CONTA:456 | 150.00 | BRL`")
+st.title("Validador de Transações — Derivação Total (corrigido)")
+st.write("Formato: `DATA_HORA | TRANSACAO | OPERACAO | CONTA_ORIGEM | CONTA_DESTINO | VALOR | MOEDA`")
+st.write("Ex.: `2025-09-07T14:35:02Z | TRX123 | debito | conta:001 | conta:999 | 1500.00 | brl`")
 
-import streamlit as st
-
-# st.title("Gramática Livre de Contexto")
-
-# st.latex(r"""
-# G = (V, \Sigma, R, S)
-# """)
-
-# st.latex(r"""
-# V = \{\langle Registro\rangle, \langle Linha\rangle, \langle Data\rangle,
-#          \langle Identificador\rangle ,\langle Tipo\rangle,\newline
-#      \langle Conta\rangle, \langle Valor\rangle, \langle Moeda\rangle\}
-# """)
-
-# st.latex(r"""
-
-# """)
-
-# st.latex(r"S = \langle Registro\rangle")
-
-# st.markdown("### Regras de Produção (R)")
-# st.latex(r"""
-# \begin{aligned}
-# \langle Registro\rangle &\to \langle Linha\rangle \\
-# \langle Linha\rangle &\to \langle Data\rangle \;|\; \langle Identificador\rangle \;|\; \langle Tipo\rangle \;|\; \langle Conta\rangle \;|\; \langle Conta\rangle \;|\; \langle Valor\rangle \;|\; \langle Moeda\rangle \\
-# \langle Data\rangle &\to \texttt{DATA} \\
-# \langle Identificador\rangle &\to \texttt{ID} \\
-# \langle Tipo\rangle &\to \texttt{TIPO} \\
-# \langle Conta\rangle &\to \texttt{CONTA} \\
-# \langle Valor\rangle &\to \texttt{VALOR} \\
-# \langle Moeda\rangle &\to \texttt{MOEDA}
-# \end{aligned}
-# """)
-
-
-# area de input
 linha = st.text_input("Linha de transação:", value=st.session_state.get("ultima_linha", ""))
 
-col_a, col_b, col_c = st.columns([1,1,1])
-if col_a.button("Validar"):
+if st.button("Validar", key="validar_btn"):
     passos, erros = validar_com_passos(linha)
     st.session_state['passos'] = passos
     st.session_state['erros'] = erros
@@ -175,49 +195,50 @@ if 'passos' not in st.session_state:
 if 'erros' not in st.session_state:
     st.session_state['erros'] = []
 
-# if não há validação ainda, mostra instrução
 if not st.session_state['passos']:
     st.info("Clique em **Validar** para gerar a derivação passo a passo.")
     st.stop()
 
-# navegação de passos
+# mostrar confirmação de sucesso / erro
+if not st.session_state['erros']:
+    st.success("Validação bem-sucedida! Todos os campos estão corretos.")
+else:
+    st.error("Erro(s) detectado(s) na validação.")
+
+
 n = len(st.session_state['passos'])
 st.markdown("---")
 col1, col2, col3 = st.columns([1,2,1])
 
 with col1:
-    if st.button("<< Voltar", key="voltar"):
+    if st.button("<< Voltar", key="back_btn"):
         st.session_state['step_idx'] = max(0, st.session_state['step_idx'] - 1)
 with col3:
-    if st.button("Avançar >>", key="avancar"):
+    if st.button("Avançar >>", key="forward_btn"):
         st.session_state['step_idx'] = min(n-1, st.session_state['step_idx'] + 1)
 with col2:
-    st.write(f"**Passo {st.session_state['step_idx']} de {n-1}**")  # descontando headers (<Registro>, <Linha>)
+    st.write(f"**Passo {st.session_state['step_idx']} de {n-1}**")
 
-# mostra o passo atual (usando HTML)
 current = st.session_state['passos'][st.session_state['step_idx']]
 st.markdown(current, unsafe_allow_html=True)
 
-# mostrar todos os passos (expander)
+
 with st.expander("Mostrar todos os passos"):
     for i, p in enumerate(st.session_state['passos']):
         st.markdown(f"**Passo {i}:** {p}", unsafe_allow_html=True)
 
 # erros / detalhes
 if st.session_state['erros']:
-    st.error("⚠️ Erro(s) detectado(s) na validação.")
+    st.error("Erro(s) detectado(s) na validação.")
     with st.expander("Detalhes do(s) erro(s)"):
         for nome, parte in st.session_state['erros']:
             if nome is None:
                 st.write(parte)
             else:
-                st.write(f"Esperado: **{nome}**  |  Recebido: ❌ `{parte}`")
+                st.write(f"Esperado: **{nome}**  |  Recebido:  `{parte}`")
 
-# ações adicionais
-st.markdown("---")
-if st.button("Reiniciar"):
-    st.session_state.pop('passos', None)
-    st.session_state.pop('erros', None)
-    st.session_state.pop('step_idx', None)
-    st.session_state.pop('ultima_linha', None)
-    #st.experimental_rerun()
+# reiniciar
+if st.button("Reiniciar", key="reset_btn"):
+    for k in ('passos','erros','step_idx','ultima_linha'):
+        st.session_state.pop(k, None)
+    st.rerun()
